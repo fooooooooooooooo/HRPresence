@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Net.Sockets;
+using OscCore;
 
 namespace HRPresence
 {
@@ -25,7 +26,7 @@ namespace HRPresence
 
             try {
                 foreach (var (path, value) in data) {
-                    var bytes = new OscCore.OscMessage($"/avatar/parameters/{path}", value).ToByteArray();
+                    var bytes = new OscMessage($"/avatar/parameters/{path}", value).ToByteArray();
                     udp.Send(bytes, bytes.Length);
                 }
             } catch {

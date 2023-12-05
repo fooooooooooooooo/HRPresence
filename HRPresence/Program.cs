@@ -1,96 +1,81 @@
-﻿using DiscordRPC;
-using System;
-using System.Diagnostics;
-using System.IO;
-using System.Threading;
+﻿using System.Diagnostics;
+using System.Net;
+using DiscordRPC;
+using HRPresence;
 using Tomlyn;
-using Tomlyn.Model;
 
-namespace HRPresence
-{
-    class Config : ITomlMetadataProvider
-    {
-        public float TimeOutInterval { get; set; } = 4f;
-        public float RestartDelay { get; set; } = 4f;
-        public bool UseDiscordRPC { get; set; } = true;
-        public string DiscordRPCId { get; set; } = "385821357151223818";
-        public bool UseOSC { get; set; } = true;
-        public int OSCPort { get; set; } = 9000;
-        public TomlPropertiesMetadata PropertiesMetadata { get; set; }
+HeartRateReading? reading = null;
+
+DiscordRpcClient? discord = null;
+OscService? osc = null;
+
+var lastUpdate = DateTime.MinValue;
+
+var config = new Config();
+if (File.Exists("config.toml")) {
+  config = Toml.ToModel<Config>(File.OpenText("config.toml").ReadToEnd());
+}
+else {
+  File.WriteAllText("config.toml", Toml.FromModel(config));
+}
+
+if (config.UseDiscordRPC) {
+  discord = new DiscordRpcClient(config.DiscordRPCId);
+  var result = discord.Initialize();
+
+  discord.OnConnectionEstablished += (_, _) => { Console.WriteLine("> Discord RPC connected"); };
+  discord.OnConnectionFailed += (_, failed) => { Console.WriteLine($"> Discord RPC failed {failed}"); };
+  discord.OnReady += (_, _) => { Console.WriteLine("> Discord RPC ready"); };
+  discord.OnClose += (_, _) => { Console.WriteLine("> Discord RPC closed"); };
+
+  Console.WriteLine(!result ? "> Discord RPC failed" : $"> Discord RPC [on] ({config.DiscordRPCId})");
+}
+
+if (config.UseOSC) {
+  osc = new OscService();
+  osc.Initialize(IPAddress.Loopback, config.OSCPort);
+  Console.WriteLine($"> OSC [on] ({IPAddress.Loopback}:{config.OSCPort})");
+}
+
+var heartRate = new HeartRateService();
+
+heartRate.HeartRateUpdated += heart => {
+  reading = heart;
+
+  Console.Write($"{DateTime.Now}  \n{reading.Value.BeatsPerMinute} BPM   ");
+  Console.CursorLeft = 0;
+  Console.CursorTop -= 1;
+
+  lastUpdate = DateTime.Now;
+  File.WriteAllText("rate.txt", $"{reading.Value.BeatsPerMinute}");
+
+  osc?.Update(reading.Value.BeatsPerMinute);
+};
+
+Console.WriteLine("> awaiting heart rate");
+Console.CursorLeft = 0;
+
+while (true) {
+  if (DateTime.Now - lastUpdate > TimeSpan.FromSeconds(config.TimeOutInterval)) {
+    Debug.WriteLine("Heart rate monitor uninitialized. Starting...");
+    while (true) {
+      try {
+        heartRate.InitiateDefault();
+        break;
+      }
+      catch (Exception e) {
+        Debug.WriteLine(
+          $"Failure while initiating heart rate service, retrying in {config.RestartDelay} seconds:");
+        Debug.WriteLine(e);
+        Thread.Sleep((int)(config.RestartDelay * 1000));
+      }
     }
+  }
 
-    class Program
-    {
-        static DiscordRpcClient discord;
-        static HeartRateService heartrate;
-        static HeartRateReading reading;
-        static OscService       osc;
+  discord?.SetPresence(new RichPresence {
+    Details = "0",
+    State = $"{reading?.BeatsPerMinute}",
+  });
 
-        static DateTime lastUpdate = DateTime.MinValue;
-
-        static void Main() {
-            var config = new Config();
-            if (File.Exists("config.toml")) {
-                config = Toml.ToModel<Config>(File.OpenText("config.toml").ReadToEnd());
-            } else {
-                File.WriteAllText("config.toml", Toml.FromModel(config));
-            }
-
-            Console.CursorVisible = false;
-            Console.WindowHeight = 4;
-            Console.WindowWidth = 32;
-
-            if (config.UseDiscordRPC) {
-                discord = new DiscordRpcClient(config.DiscordRPCId);
-                discord.Initialize();
-                Console.WriteLine($"> Discord RPC [on]");
-            }
-
-            if (config.UseOSC) {
-                osc = new OscService();
-                osc.Initialize(System.Net.IPAddress.Loopback, config.OSCPort);
-                Console.WriteLine($"> OSC [on]");
-            }
-
-            heartrate = new HeartRateService();
-            heartrate.HeartRateUpdated += heart => {
-                reading = heart;
-
-                Console.Write($"{DateTime.Now}  \n{reading.BeatsPerMinute} BPM   ");
-                Console.SetCursorPosition(0, 0);
-
-                lastUpdate = DateTime.Now;
-                File.WriteAllText("rate.txt", $"{reading.BeatsPerMinute}");
-
-                osc?.Update(reading.BeatsPerMinute);
-            };
-
-            Console.WriteLine($"> awaiting heart beat");
-            Console.SetCursorPosition(0, 0);
-
-            while (true) {
-
-                if (DateTime.Now - lastUpdate > TimeSpan.FromSeconds(config.TimeOutInterval)) {
-                    Debug.WriteLine("Hearrate monitor uninitialized. Starting...");
-                    while(true) {
-                        try {
-                            heartrate.InitiateDefault();
-                            break;
-                        } catch (Exception e) {
-                            Debug.WriteLine($"Failure while initiating heartrate service, retrying in {config.RestartDelay} seconds:");
-                            Debug.WriteLine(e);
-                            Thread.Sleep((int)(config.RestartDelay * 1000));
-                        }
-                    }
-                }
-
-                discord?.SetPresence(new RichPresence() {
-                    Details = $"Heart Rate",
-                    State = $"{reading.BeatsPerMinute} BPM",
-                });
-
-                Thread.Sleep(2000);
-            }
-        }
-    }
+  Thread.Sleep(2000);
 }
