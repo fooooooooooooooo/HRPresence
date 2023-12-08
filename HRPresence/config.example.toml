@@ -1,0 +1,30 @@
+# Time is in ms
+
+# If no new reading in this time, attempt to reconnect
+monitor_timeout = 4000
+# If reconnect fails, wait this long before trying again
+init_failure_delay = 4000
+# Writes heart rate to this file
+rate_path = "rate.txt"
+
+# Discord RPC
+enable_rpc = true
+rpc_id = "00000000000000000000"
+rpc_update_interval = 5000
+rpc_details_template = "details"
+# Template has {reading}
+rpc_state_template = "{reading} BPM"
+# Monitor disconnected or failed to read
+rpc_na_details_template = "details"
+rpc_na_state_template = "N/A"
+
+# OSC
+enable_osc = true
+osc_port = 9000
+
+# Logging
+enable_logging = false
+log_interval = 10000
+# Template has {timestamp} (`2023-12-08T15:07:39`) and {reading}
+log_template = "{timestamp} {reading}"
+log_path = "log.txt"

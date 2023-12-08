@@ -14,13 +14,12 @@ var lastUpdate = DateTime.MinValue;
 var config = new Config();
 if (File.Exists("config.toml")) {
   config = Toml.ToModel<Config>(File.OpenText("config.toml").ReadToEnd());
-}
-else {
+} else {
   File.WriteAllText("config.toml", Toml.FromModel(config));
 }
 
-if (config.UseDiscordRpc) {
-  discord = new DiscordRpcClient(config.DiscordRpcId);
+if (config.EnableRpc) {
+  discord = new DiscordRpcClient(config.RpcId);
   var result = discord.Initialize();
 
   discord.OnConnectionEstablished += (_, _) => { Console.WriteLine("> Discord RPC connected"); };
@@ -28,25 +27,30 @@ if (config.UseDiscordRpc) {
   discord.OnReady += (_, _) => { Console.WriteLine("> Discord RPC ready"); };
   discord.OnClose += (_, _) => { Console.WriteLine("> Discord RPC closed"); };
 
-  Console.WriteLine(!result ? "> Discord RPC failed" : $"> Discord RPC [on] ({config.DiscordRpcId})");
+  Console.WriteLine(!result ? "> Discord RPC failed" : $"> Discord RPC [on] ({config.RpcId})");
 }
 
-if (config.UseOsc) {
+if (config.EnableOsc) {
   osc = new OscService(IPAddress.Loopback, config.OscPort);
   Console.WriteLine($"> OSC [on] ({IPAddress.Loopback}:{config.OscPort})");
 }
 
-var heartRate = new HeartRateService();
+var monitor = new HeartRateService();
 
-heartRate.HeartRateUpdated += hrReading => {
+var firstLog = true;
+monitor.HeartRateUpdated += hrReading => {
   reading = hrReading;
 
+  if (!firstLog) {
+    Console.CursorLeft = 0;
+    Console.CursorTop -= 1;
+    firstLog = false;
+  }
+
   Console.Write($"{DateTime.Now}  \n{reading.Value.BeatsPerMinute} BPM   ");
-  Console.CursorLeft = 0;
-  Console.CursorTop -= 1;
 
   lastUpdate = DateTime.Now;
-  File.WriteAllText("rate.txt", $"{reading.Value.BeatsPerMinute}");
+  File.WriteAllText(config.RatePath, reading.Value.BeatsPerMinute.ToString());
 
   osc?.Update(reading.Value.BeatsPerMinute);
 };
@@ -62,18 +66,18 @@ if (config.EnableLogging) {
 var lastLogWrite = DateTime.MinValue;
 
 while (true) {
-  if (DateTime.Now - lastUpdate > TimeSpan.FromMilliseconds(config.TimeOutInterval)) {
+  if (DateTime.Now - lastUpdate > TimeSpan.FromMilliseconds(config.MonitorTimeout)) {
     Console.WriteLine("Heart rate monitor uninitialized. Starting...");
 
     while (true) {
       try {
-        heartRate.InitiateDefault();
+        monitor.InitiateDefault();
         break;
       } catch (Exception e) {
         Console.WriteLine(
-          $"Failure while initiating heart rate service, retrying in {config.RestartDelay}ms:");
+          $"Failure while initiating heart rate service, retrying in {config.InitFailureDelay}ms:");
         Console.WriteLine(e);
-        Thread.Sleep((int)(config.RestartDelay));
+        Thread.Sleep(config.InitFailureDelay);
       }
     }
   }
@@ -83,10 +87,24 @@ while (true) {
     Console.WriteLine("No reading");
   }
 
-  discord?.SetPresence(new RichPresence {
-    Details = config.DiscordRpcDetails,
-    State = $"{reading?.BeatsPerMinute}",
-  });
+  if (config.EnableRpc) {
+    StringTemplate details;
+    StringTemplate state;
+
+    if (reading is not null) {
+      details = new StringTemplate(config.RpcDetailsTemplate);
+      state = new StringTemplate(config.RpcStateTemplate)
+        .Add("reading", reading.Value.BeatsPerMinute.ToString());
+    } else {
+      details = new StringTemplate(config.RpcNaDetailsTemplate);
+      state = new StringTemplate(config.RpcNaStateTemplate);
+    }
+
+    discord?.SetPresence(new RichPresence {
+      Details = details.ToString(),
+      State = state.ToString(),
+    });
+  }
 
   if (config.EnableLogging && DateTime.Now - lastLogWrite > TimeSpan.FromMilliseconds(config.LogInterval)) {
     WriteLog(reading?.BeatsPerMinute ?? 0);
@@ -94,9 +112,13 @@ while (true) {
     lastLogWrite = DateTime.Now;
   }
 
-  Thread.Sleep(config.UpdateDelay);
+  Thread.Sleep(config.RpcUpdateInterval);
 }
 
 void WriteLog(int bpm) {
-  File.AppendAllText("log.txt", $"{DateTime.Now:s} {bpm}\n");
+  var template = new StringTemplate(config.LogTemplate)
+    .Add("timestamp", DateTime.Now.ToString("s"))
+    .Add("reading", bpm.ToString());
+
+  File.AppendAllText(config.LogPath, $"{template}\n");
 }

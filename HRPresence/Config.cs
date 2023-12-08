@@ -1,19 +1,29 @@
 ﻿using Tomlyn.Model;
 
-namespace HRPresence; 
+namespace HRPresence;
 
 public class Config : ITomlMetadataProvider {
-  public float TimeOutInterval { get; set; } = 4000;
-  public float RestartDelay { get; set; } = 4000;
-  public bool UseDiscordRpc { get; set; } = true;
-  public string DiscordRpcId { get; set; } = "385821357151223818";
-  public string DiscordRpcDetails { get; set; } = "aaaa";
+  public int MonitorTimeout { get; set; } = 4000;
+  public int InitFailureDelay { get; set; } = 4000;
+  public string RatePath { get; set; } = "rate.txt";
 
-  public bool UseOsc { get; set; } = true;
+  // Rpc
+  public bool EnableRpc { get; set; } = true;
+  public string RpcId { get; set; } = "385821357151223818";
+  public string RpcDetailsTemplate { get; set; } = "aaaa";
+  public string RpcNaDetailsTemplate { get; set; } = "aaaa";
+  public string RpcStateTemplate { get; set; } = "{reading}";
+  public string RpcNaStateTemplate { get; set; } = "N/A";
+  public int RpcUpdateInterval { get; set; } = 5000;
+
+  // Osc
+  public bool EnableOsc { get; set; } = true;
   public int OscPort { get; set; } = 9000;
-  public int UpdateDelay { get; set; } = 5000;
 
+  // Logging
   public bool EnableLogging { get; set; } = false;
   public int LogInterval { get; set; } = 10000;
-  public TomlPropertiesMetadata PropertiesMetadata { get; set; }
+  public string LogTemplate { get; set; } = "{timestamp} {reading}";
+  public string LogPath { get; set; } = "log.txt";
+  public TomlPropertiesMetadata PropertiesMetadata { get; set; } = null!;
 }
