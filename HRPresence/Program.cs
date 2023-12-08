@@ -37,17 +37,12 @@ if (config.EnableOsc) {
 
 var monitor = new HeartRateService();
 
-var firstLog = true;
 monitor.HeartRateUpdated += hrReading => {
   reading = hrReading;
 
-  if (!firstLog) {
-    Console.CursorLeft = 0;
-    Console.CursorTop -= 1;
-    firstLog = false;
-  }
-
   Console.Write($"{DateTime.Now}  \n{reading.Value.BeatsPerMinute} BPM   ");
+  Console.CursorLeft = 0;
+  Console.CursorTop -= 1;
 
   lastUpdate = DateTime.Now;
   File.WriteAllText(config.RatePath, reading.Value.BeatsPerMinute.ToString());
