@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using System.Text;
 using DiscordRPC;
 using HRPresence;
 using Tomlyn;
@@ -53,8 +54,15 @@ heartRate.HeartRateUpdated += hrReading => {
 Console.WriteLine("> awaiting heart rate");
 Console.CursorLeft = 0;
 
+if (config.EnableLogging) {
+  Console.WriteLine("> logging enabled");
+  Console.CursorLeft = 0;
+}
+
+var lastLogWrite = DateTime.MinValue;
+
 while (true) {
-  if (DateTime.Now - lastUpdate > TimeSpan.FromSeconds(config.TimeOutInterval)) {
+  if (DateTime.Now - lastUpdate > TimeSpan.FromMilliseconds(config.TimeOutInterval)) {
     Console.WriteLine("Heart rate monitor uninitialized. Starting...");
 
     while (true) {
@@ -63,9 +71,9 @@ while (true) {
         break;
       } catch (Exception e) {
         Console.WriteLine(
-          $"Failure while initiating heart rate service, retrying in {config.RestartDelay} seconds:");
+          $"Failure while initiating heart rate service, retrying in {config.RestartDelay}ms:");
         Console.WriteLine(e);
-        Thread.Sleep((int)(config.RestartDelay * 1000));
+        Thread.Sleep((int)(config.RestartDelay));
       }
     }
   }
@@ -80,5 +88,15 @@ while (true) {
     State = $"{reading?.BeatsPerMinute}",
   });
 
+  if (config.EnableLogging && DateTime.Now - lastLogWrite > TimeSpan.FromMilliseconds(config.LogInterval)) {
+    WriteLog(reading?.BeatsPerMinute ?? 0);
+
+    lastLogWrite = DateTime.Now;
+  }
+
   Thread.Sleep(config.UpdateDelay);
+}
+
+void WriteLog(int bpm) {
+  File.AppendAllText("log.txt", $"{DateTime.Now:s} {bpm}\n");
 }
